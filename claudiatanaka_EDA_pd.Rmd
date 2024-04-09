@@ -1,0 +1,585 @@
+---
+title:  Projeto da Disciplina - Análise exploratória de dados (EDA)
+author: Claudia Tanaka (claudia.tanaka@al.infnet.edu.br)
+date:   "Atualizado em `r format(Sys.time(), '%d/%m/%Y')`"
+
+# params: 
+#   path.in: _pasta.de.entrada/
+#   path.out: _pasta.de.saida/
+
+output:
+  html_notebook:
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+---
+
+*Desenvolvido em R versão 4.3.2 (2023-10-31 ucrt)*
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set( echo=TRUE, message=FALSE, warning=FALSE )
+options(scipen=999) # "Desliga" notação científica. 
+
+# PACOTES 
+library(tidyverse)
+
+# PRETTY DOC
+library(gt)
+library(patchwork)
+
+theme_set(theme_light())
+theme_update(
+  panel.grid.minor = element_blank(),
+  plot.title = element_text(size = 12, colour = "gray30", face = "bold"),
+  plot.subtitle = element_text(face = 'italic', colour = "gray50", size = 10),
+  plot.caption = element_text(colour = "gray50", hjust=0, size = 8),
+  legend.title = element_blank(),
+)
+```
+
+\
+
+# Introdução
+
+Nessa disciplina, aprofundamos nossos conhecimentos na linguagem R e de estatística, para realizar análises descritivas de bases de dados, tarefa que é extremamente importante para o dia-a-dia de um cientista de dados. Agora iremos validar nosso conhecimento.
+
+\
+
+# P01
+
+**O relatório final deve ser apresentado utilizando RMarkdown. Nesse relatório devem haver:** \* imagens estáticas ("prints" de tela, imagens da internet - com a devida fonte mencionada - ou figuras criadas pelo aluno fora do ambiente do R);\
+\* imagens geradas através do ambiente R, particularmente com a biblioteca ggplot;\
+\* links clicáveis (como fontes e referências).\
+
+\
+
+# P02 Base de dados
+
+**Escolha uma base de dados para realizar esse projeto. Essa base de dados será utilizada durante toda sua análise. Essa base necessita ter 4 (ou mais) variáveis de interesse, onde todas são numéricas (confira com o professor a possibilidade de utilização de dados categóricos). Observe que é importante que haja dados faltantes em pelo menos uma variável para executar esse projeto. Caso você tenha dificuldade para escolher uma base, o professor da disciplina irá designar para você. Explique qual o motivo para a escolha dessa base e aponte os resultados esperados através da análise.**
+
+A base de dados utilizada reune os componentes do Índice de Desenvolvimento Humano (IDH) -- em inglês, *Human Development Indicator* -- comparando os resultados de 167 países para o ano de 2021.
+
+O IDH surge no Programa das Nações Unidas para o Desenvolvimento (PNUD) e no Relatório de Desenvolvimento Humano (RDH). Estes foram criados e lançados por uma equipe de economistas liderada pelo economista paquistanês Mahbub ul Haq em 1990 diante das limitações dos indicadores puramente focados na riqueza produzida por um país para refletir o bem estar geral de uma sociedade e seu nível de desenvolvimento. Dessa forma, além do crescimento econômico, o IDH adiciona saúde e educação (capacitação das pessoas) como critérios complementares para avaliar o bem estar de um país e seu desenvolvimento.
+
+O IDH pode ser utilizado para questionar as escolhas de políticas e alocação de recursos de um país, perguntando como é que dois países com o mesmo nível de GNI (Gross National Income) per capita podem ter níveis de desenvolvimento humano diferentes. Estes contrastes podem estimular o debate sobre as prioridades políticas dos governos.
+
+O IDH resume o desempenho de um país em três dimensões-chave do desenvolvimento humano:
+
+1)  Uma vida longa e saudável, medida pela *Expectativa de vida ao nascer*;\
+2)  Conhecimento e oportunidades de desenvolvimento individual, medidos pela *média de anos de escolaridade completados para adultos com 25 anos ou mais* e *anos de escolaridade esperados ao entrar no sistema educacional*; e\
+3)  Um padrão de vida digno, medido pela *Renda Nacional Bruta per capita* - em inglês, *Gross National Income (GNI)*.
+
+Tecnicamente o IDH é a média geométrica dos índices normalizados para cada uma das três dimensões.
+
+O IDH é um indicador resumido e capta apenas parte dos fatores que traduzem o bem-estar de um país. Ele não reflete as desigualdades no acesso à saúde, educação ou na distribuição de renda de um país. O *Relatório de Desenvolvimento Humano* de 2010 introduziu o Índice de Desenvolvimento Humano Ajustado à Desigualdade (IDHI). Embora o IDH simples permaneça útil, "o IDHI é o nível real de desenvolvimento humano (considerando a desigualdade), enquanto o IDH pode ser visto como um índice de desenvolvimento humano 'potencial' (ou o nível máximo de IDH) que poderia ser alcançado se não houvesse desigualdade."
+
+O IDHI baseia-se numa classe de índices compostos sensíveis à distribuição proposta por Foster, Lopez-Calva e Szekely (2005), que se baseia na família de medidas de desigualdade de Atkinson (1970). É calculado como uma média geométrica de índices dimensionais ajustados à desigualdade. O IDHI contabiliza as desigualdades nas dimensões do IDH “descontando” o valor médio de cada dimensão de acordo com o seu nível de desigualdade. O valor do IDHI é igual ao valor do IDH quando não há desigualdade entre as pessoas, mas cai abaixo do valor do IDH à medida que a desigualdade aumenta. Neste sentido, o IDHI mede o nível de desenvolvimento humano quando a desigualdade é contabilizada.
+
+O objetivo deste projeto será descrever a situação de desenvolvimento dos países medida pelo IDHI, explorar a contribuição de cada uma das três dimensões para este posicionamento e comparar os resultados do IDHI com o IDH simples. Complementaremos essa análise exploratória adicionando dados de população para incluir uma dimensão do porte relativo de cada país.
+
+\
+
+O código a seguir usa o pacote `wbstats` para baixar tabela auxiliar de países e regiões compilada pelo Banco Mundial:
+
+```{r}
+# Tabela auxiliar de códigos e classificações de países
+ta.countries <- wbstats::wb_countries() |> 
+  select(iso3c, country, region_iso3c, region, income_level_iso3c, income_level)
+```
+
+\
+
+O código a seguir lê dados do IDH diretamente do site da ONU: [PNUD (Programa das Nações Unidas para o Desenvolvimento), Relatório de Desenvolvimento Humano 2021/2022](https://hdr.undp.org/data-center/human-development-index#/indicies/HDI).
+
+```{r}
+df.onu <- read_csv(
+  "https://hdr.undp.org/sites/default/files/2021-22_HDR/HDR21-22_Composite_indices_complete_time_series.csv"
+) |> 
+  select(-region, -country) |> 
+  # coloca a tabela "em pé" no estilo tidy
+  pivot_longer(3:1006) |> filter(!is.na(value)) |> 
+  # separa a coluna name em duas colunas: o nome do indicador e o ano
+  separate(name, into=c("indicador","ano"), sep=-4, remove=T) |> 
+  mutate(ano = as.integer(ano),
+         indicador = str_sub(indicador, 1, -2),
+         hdicode = if_else(is.na(hdicode), "Not classified", hdicode)) |> 
+  # Seleciona as variáveis de interesse:
+  filter(indicador %in% c(
+    "hdi",       # Human Development Index
+    "le",        # Life Expectancy at Birth (years)
+    "eys",       # Expected Years of Schooling (years)
+    "mys",       # Mean Years of Schooling (years)
+    "gnipc",     # Gross National Income Per Capita (2017 PPP$)
+    'ihdi'       # Inequality-adjusted Human Development Index
+  )) |> 
+  # Coloca a tabela "deitada" de forma que cada indicador fique em uma coluna
+  pivot_wider(names_from=indicador, values_from=value) |> 
+  # Customiza os nomes das variáveis
+  rename(
+    idh         = hdi,
+    exp.vida    = le,
+    escol.esp   = eys,
+    escol.media = mys,
+    idh.cat     = hdicode,
+    iso3c       = iso3,
+    idhi        = ihdi,
+    renda.pc     = gnipc
+  )
+
+fonte.un <- "PNUD (Programa das Nações Unidas para o Desenvolvimento), Relatório de Desenvolvimento Humano 2021/2022."
+```
+
+
+\
+
+O código a seguir usa o pacote `wbstats` para baixar os dados de população por país compilados pelo Banco Mundial.
+
+```{r}
+df.wb <- wbstats::wb_data(c("pop" = "SP.POP.TOTL"), start_date=2010, end_date=2021) |> 
+  select(iso3c, ano=date, pop)
+
+attr(df.wb$pop, "label") <- NULL # remove o atributo "label" da df
+
+fonte.wb <- "DataBank do Banco Mundial, World Development Indicators."
+```
+
+\
+
+O código a seguir reúne o dataset do IDH com o dataset de população.
+
+```{r}
+df0 <- left_join( df.onu, df.wb, join_by(iso3c, ano) ) |> 
+  inner_join(ta.countries, join_by(iso3c)) |> 
+  # População em milhões
+  mutate(renda.pc_mil = renda.pc/1000, pop_milhoes = pop/1e6, .after=escol.media) |> 
+  mutate(ano = as.integer(ano)) |> 
+  select(-pop, -renda.pc, -ends_with("_iso3c")) |> 
+  relocate(country:income_level, .after=iso3c) |> 
+  filter(ano %in% c(2011, 2021))
+```
+
+\
+
+```{r}
+df0 |> summarise(n.paises = n_distinct(iso3c), .by=ano) |> arrange(ano) |> 
+  gt(rowname_col="stub", locale="pt") |> sub_missing() |>
+  fmt_integer(n.paises) |> 
+  tab_options(
+    heading.align="left", heading.title.font.size=pct(110), heading.subtitle.font.size=pct(90),
+    column_labels.font.weight="bold", column_labels.font.size=pct(80),
+    column_labels.text_transform="uppercase", column_labels.background.color="gray95",
+    data_row.padding=px(2), row_group.padding=px(2), row_group.font.weight="bold",
+    table.font.size=pct(90), source_notes.font.size = pct(70),
+  ) |> 
+  tab_header(title = md("**Quantidade de países por ano (n)**"))  
+```
+
+
+```{r include=FALSE}
+rm(df.onu, df.wb); gc()
+```
+
+
+\
+
+# P03 Estatísticas descritivas
+
+**Utilizando o pacote `summarytools` (função `descr`), descreva estatisticamente a sua base de dados.**
+
+```{r}
+res.DescrStat <- data.frame()
+for (v_ano in unique(df0$ano)) {
+  res.DescrStat <- rbind(
+    res.DescrStat,
+    summarytools::descr(df0 |> filter(ano==v_ano) |> select(-ano), na.rm=T, transpose=T) |> 
+      as.data.frame() |> rownames_to_column("variavel") |> 
+      mutate(ano = v_ano, .after=variavel)
+  )
+}; rm(v_ano)
+```
+
+
+```{r}
+res.DescrStat |> mutate(Pct.Valid = Pct.Valid/100) |> 
+  group_by(variavel) |> 
+  gt(rowname_col="stub", locale="pt") |> sub_missing() |>
+  fmt_number(c(Mean:IQR, Skewness), decimals=1) |> 
+  fmt_number(c(SE.Skewness), decimals=2) |> 
+  fmt_integer(Kurtosis) |> 
+  fmt_percent(c(CV, Pct.Valid), decimals=0) |> 
+  tab_options(
+    heading.align="left", heading.title.font.size=pct(110), heading.subtitle.font.size=pct(90),
+    column_labels.font.weight="bold", column_labels.font.size=pct(80),
+    column_labels.text_transform="uppercase", column_labels.background.color="gray95",
+    data_row.padding=px(2), row_group.padding=px(2), row_group.font.weight="bold",
+    table.font.size=pct(90), source_notes.font.size = pct(70),
+  ) |> 
+  tab_header(title = md("**Estatísticas descritivas da base de dados do IDHI, 2011/2021**"))
+```
+
+Observações:
+
+As distribuições das variáveis de escolaridade parecem apontar leve melhoria (aumentaram os anos de escolaridade média e de escolaridade esperada dos países) entre 2011 e 2021 porque tanto as médias quanto as medianas aumentaram nesses dois indicadores.\
+
+A variabilidade (Desvio padrão e CV) ficaram praticamente estáveis no indicador de escolaridade esperada, porém o IQR aumentou em amplitude (os países que compõem 50% da amostra estão mais "espalhados"), mas tanto o Q1 quanto o Q3 apresentam valores mais altos em 2021 que em 2011, o que pode apontar uma melhoria. O mínimo aumentou pouco mais de meio ano - ou seja, houve melhora do pior resultado na comparação entre 2011 e 2021 - porém houve queda de 1,4 anos na máxima escolaridade esperada atingida.\
+
+No indicador de anos de escolaridade média, a variabilidade indicada pelo desvio padrão e pelo CV diminuíram. O resultado dos países que compõem 50% da amostra ficou levemente mais concentrado (IQR menor) e tanto o Q1 quanto o Q3 aumentaram. O mínimo teve um aumento expressivo, de 0,97 anos para 2,11 anos e o máximo também apresentou aumento, ainda que diminuto.\
+
+Minha leitura dos resultados do eixo de escolaridade do IDH é de que houve certo avanço, a maioria dos países aparenta ter melhorado - ainda que o desenvolvimento observado seja relativamente pequeno para o que se poderia almejar em um período de 10 anos e os mínimos e o Q1 dos dois indicadores sejam assustadoramente baixos.\
+
+O indicador de expectativa de vida em anos parece apontar tendência oposta à das variáveis de escolaridade. A queda na mediana entre 2011 e 2021 foi de meio ano, porém houve aumento de magnitude semelhante na média. O IQR, CV e Desvio Padrão de 2021 ficaram levemente menores, indicando certa tendência de concentração dos resultados dos países, o que pode ser visto como positivo. O mínimo da expectativa de vida aumentou 5,8 anos, assim como o Q1 (+1,7) - avanços significativos, especialmente considerando ser essa uma variável demográfica que leva em conta a totalidade da população de cada país e que essa década inclui o impacto mais agudo da pandemia de COVID-19. 
+
+Renda e população são significativamente diferentes das outras distribuições, não apenas em escala, mas também em assimetria (skewness), com uma cauda longa à direita da distribuição (concentração de países com menos renda per capita e menor população). 
+
+No caso da população, é possível que dois países que são outliers extremos (China e Índia têm população ~4x maior que os Estados Unidos, que é o terceiro maior país) estejam nos impedindo de enxergar a distribuição da grande maioria dos países.
+
+Como o IDH / IDHI são índices calculados a partir das outras variáveis exceto população, vamos fazer sua análise na conclusão do projeto.
+
+\
+
+
+```{r}
+# Calcula estatísticas descritivas de um dataset empilhado
+ResumoStats <- function(df, ...) {
+  df |> 
+    summarise(
+      n = n(),
+      media = mean(value, ...),
+      Std.Dev = sd(value, ...),
+      min = min(value, ...),
+      q1 = quantile(value, .25, ...), # quantil 25%
+      mediana = median(value, ...),
+      q3 = quantile(value, .75, ...), # quantil 75%
+      max = max(value, ...),
+      mad = mad(value, ...),
+      iqr = IQR(value, ...),
+      skewness = moments::skewness(value, ...),
+      kurtosis = moments::kurtosis(value, ...),
+      .by=indicador
+    ) |> 
+    mutate(cv = Std.Dev/media, .after=iqr) # Calcula o coeficiente de variação
+}
+```
+
+
+
+
+\
+
+A normalização da base facilita a comparação visual da concentração dos dados dos países por ano:
+
+```{r fig.width=8, fig.asp=.8}
+# Função para normalizar um vetor para escala mínimo-máximo (0-1)
+MinMaxNorm <- function(x, ...) {
+  return( (x - min(x, ...)) / (max(x, ...) - min(x, ...)) )
+}
+
+# Normaliza a base
+df0.norm <- df0  |> mutate(across(idh:idhi, ~MinMaxNorm(.x, na.rm=T)), .by=ano)
+df0.padr <- df0  |> mutate(across(idh:idhi, scale), .by=ano)
+
+
+theme_update(legend.position="bottom")
+p1 <- df0  |> 
+  pivot_longer(idh:idhi, names_to="indicador") |> 
+  mutate(ano=as.factor(ano), indicador=fct_rev(indicador)) |> 
+  ggplot(aes(y=indicador, x=value, fill=ano)) +
+  geom_boxplot(outlier.colour="red", staplewidth=.5) + 
+  scale_x_continuous(labels=scales::label_number(scale=1)) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(subtitle = "Dados originais", x=NULL, y=NULL)
+
+p2 <- df0.norm  |> 
+  pivot_longer(idh:idhi, names_to="indicador") |> 
+  mutate(ano=as.factor(ano), indicador=fct_rev(indicador)) |> 
+  ggplot(aes(y=indicador, x=value, fill=ano)) +
+  geom_boxplot(outlier.color="red", staplewidth=.5) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(subtitle = "Dados normalizados (min-max)", x=NULL, y=NULL)
+
+p3 <- df0.padr  |> 
+  pivot_longer(idh:idhi, names_to="indicador") |> 
+  mutate(ano=as.factor(ano), indicador=fct_rev(indicador)) |> 
+  ggplot(aes(y=indicador, x=value, fill=ano)) +
+  geom_boxplot(outlier.color="red", staplewidth=.5) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(subtitle = "Dados padronizados (z-score)", x=NULL, y=NULL)
+
+p1 + p2 + p3 + plot_annotation(
+  title = "Boxplot dos Indicadores dos Países",
+  caption= paste0("Fonte:\n", fonte.un, "\n", fonte.wb)
+) + plot_layout(guides="collect", axes="collect")
+```
+
+```{r include=FALSE}
+rm(p1,p2); gc()
+```
+
+
+
+
+
+\
+
+# P04 scatter matrix XXX
+
+**Crie um gráfico com a matriz de espalhamento (scatter matrix plot) para sua base de dados. Através de investigação visual, quais são as variáveis mais correlacionadas. Apresente o gráfico e justifique.**
+
+```{r fig.asp=1}
+df0 |> filter(ano==2021) |> select(idh:idhi) |> 
+  psych::pairs.panels(
+    method = "spearman", 
+    hist.col = "slategray", 
+    pch=".",             # show data points as "."
+    density = TRUE,      # show density plots
+    stars=T,             # show confidence/relevance as stars on coef
+    gap=0,               # remove gap btw variables
+    main="Pairs plot entre todas as variáveis do dataset, 2021"
+  ) 
+```
+
+\
+
+# P05 Normalidade
+
+**Sobre a normalidade das variáveis:**\
+
+\
+
+## a. Distribuição Normal XXX
+
+**Descreva o que é uma distribuição normal;**
+
+Uma distribuição normal, em geral, deveria ter a média igual à mediana e uma concentração simétrica em torno da média/mediana (medidas de tendência central da amostra ou população). Visualmente, a curva normal tem o aspecto da curva ilustrada na parte inferior da imagem a seguir:
+
+\
+![A distribuição normal e o boxplot](.imgs/boxplot.jpeg)
+
+
+\
+
+## b. Histograma
+
+**b. Crie um histograma para cada variável da sua base de dados. Justifique a escolha do número de bins para seu trabalho. (usando o pacote `ggplot`);**
+
+O número de bins do histograma é uma escolha arbitrária e está diretamente ligada à amplitude que
+se deseja definir como base de cada barra contígua, para o caso onde se trabalha com amplitudes iguais para todos intervalos.\
+
+É recomendado conhecer a distribuição interquartil dos dados e buscar uma relação entre a concentração interquartil de modo que a amplitude distribua os dados de forma equivalente em termos de densidade de probabilidade.\
+
+Na literatura, existem equações modeladas para sugerir amplitudes dos bins de modo a facilitar a decisão do analista, das quais destacamos duas:
+
+
+1) Regra de Freedman-Diaconis: A regra Freedman-Diaconis fornece uma abordagem baseada em dados para determinar a largura do bin com base no intervalo interquartílico (IQR) dos dados. Ao incorporar esta regra na escolha dos bins, o histograma capturem de maneira efetiva a variabilidade dos dados.\
+
+2) Regra de Sturge: Usa uma fórmula que considera o número total de observações para determinar a quantidade de bins para um histograma. Este método assume uma distribuição normal nos dados.\
+
+
+Como ainda não identificamos se a distribuição da amostra de cada variável no nosso dataset segue uma distribuição normal, vamos usar a regra de Freedman-Diaconis que independe do tipo de distribuição.
+
+
+
+```{r}
+df0 |> 
+  pivot_longer(idh:idhi, names_to="variavel") |> 
+  summarise(
+    FD.bins = 2 * IQR(value, na.rm=T) / ( sum(!is.na(value))^(1/3) ),
+    .by=c(variavel, ano)
+  ) |> 
+  mutate(rounded = round(FD.bins)) |> 
+  arrange(rounded) |> 
+  gt(rowname_col="stub", locale="pt") |> sub_missing() |>
+  tab_options(
+    heading.align="left", heading.title.font.size=pct(110), heading.subtitle.font.size=pct(90),
+    column_labels.font.weight="bold", column_labels.font.size=pct(80),
+    column_labels.text_transform="uppercase", column_labels.background.color="gray95",
+    data_row.padding=px(2), row_group.padding=px(2), row_group.font.weight="bold",
+    table.font.size=pct(90), source_notes.font.size = pct(70),
+    grand_summary_row.padding=px(2), grand_summary_row.background.color="gray95"
+  )
+```
+
+\
+
+Como vamos aplicar a mesma quantidade de bins em todas as variáveis para facilitar a comparação visual dos histogramas, optei por 7 bins.
+
+
+```{r fig.width=6, fig.asp=2}
+df0 |> pivot_longer(idh:idhi) |> 
+  arrange(name) |> 
+  ggplot(aes(x=value)) +
+  geom_histogram(color="gray", fill="slategray", alpha=.8, bins=7) +
+  facet_wrap(name~ano, ncol=2, scales="free") +
+  scale_x_continuous(expand=expansion(mult=c(.1,.1)), 
+                     labels=scales::label_number(big.mark=".", decimal.mark=",")) +
+  scale_y_continuous(expand=expansion(mult=c(0,.1))) +
+  theme(panel.grid.major.x=element_blank(),
+        plot.margin = margin(rep(10, 4))) + 
+  labs(x=NULL, y="Densidade", 
+       title="Histograma dos dados dos países 2011/2021")
+```
+
+Observações:
+
+A única variável da amostra que parece se aproximar de uma distribuição normal é a escolaridade esperada em 2021 (`escol.esp`).
+
+A assimetria (skewness) da população e da renda per capita já observada anteriormente nas estatísticas descritivas (P03) é confirmada graficamente nos histogramas.
+
+A variável população (que não entra no cálculo do IDHI) apresenta tendência a outliers extremos e confirma o que havia sido observado com uma curtose bastante alta nos dois anos.
+
+Na comparação de 2011 com 2021, os países aparentam ter aumentado os anos de escolaridade média e de escolaridade esperada. 
+
+É difícil determinar se a distribuição expectativa de vida dos países melhorou ou piorou entre 2011 e 2021 pois apesar de haver diminuição nos bins mais baixos, há também uma queda expressiva nos dois últimos bins (mais de 75 anos).  
+
+No caso da renda per capita, a distribuiçao parece ter piorado, com uma concentração maior de países no primeiro bin. Há que se tomar cuidado com o aumento da média e dos valores máximos de renda per capita por país pois estes valores são nominais (sem ajuste de inflação para o período).
+
+\
+
+## c. Q-Q plot XXX
+
+**Crie um gráfico Q-Q para cada variável de sua base de dados. (use as funções presentes no pacote `ggpubr`);**
+
+Em estatística, um Q–Q plot (quantile-quantile plot) é um método de visualização gráfica para comparar duas distribuições de probabilidade traçando seus quantis um contra o outro. Um ponto (x, y) no gráfico corresponde a um dos quantis da segunda distribuição (coordenada y) plotado em relação ao mesmo quantil da primeira distribuição (coordenada x). 
+
+Se as duas distribuições comparadas forem semelhantes, os pontos no Q–Q plot ficarão aproximadamente na linha de identidade $y = x$. Se as distribuições estiverem linearmente relacionadas, os pontos no Q–Q plot ficarão aproximadamente em uma linha reta, mas não necessariamente na linha $y = x$. Os Q–Q plots também podem ser usados como uma forma gráfica de estimar parâmetros em uma família de distribuições em escala de localização.
+
+Um Q–Q plot é usado para comparar as formas das distribuições, fornecendo uma visão gráfica de como propriedades como localização, escala e assimetria são semelhantes ou diferentes nas duas distribuições. Os Q–Q plots podem ser usados para comparar coleções de dados ou distribuições teóricas. O uso de Q-Q plots para comparar duas amostras de dados pode ser visto como uma abordagem não paramétrica para comparar suas distribuições subjacentes. Um Q–Q plot geralmente é mais útil para um diagnóstico do que comparar os histogramas das amostras, mas é um método menos conhecido. Os Q–Q plots são comumente usados para comparar um conjunto de dados com um modelo teórico, podendo fornecer uma avaliação visual da qualidade do ajuste, em vez de ser reduzida a uma estatística de resumo numérico. Os Q–Q plots também podem ser usados para comparar duas distribuições teóricas entre si. Como os Q–Q plots comparam distribuições, não há necessidade de os valores serem observados como pares, como em um gráfico de dispersão, ou mesmo de que os números de valores nos dois grupos sendo comparados sejam iguais.
+
+
+
+```{r fig.width=10, fig.asp=1}
+ggpubr::ggqqplot(df0 |> mutate(ano = as.factor(ano),
+                               across(idh:idhi, scale)),
+                 x = c("idh", "idhi",  
+                       "escol.esp", "escol.media", "exp.vida", 
+                       "pop_milhoes", "renda.pc_mil"),
+                 palette = "Dark2", color="ano", conf.int=T,add="qqline",
+                 combine = TRUE, size = 0.5)
+```
+
+\
+
+## d. Shapiro-Wilk
+
+**Execute um teste de normalidade Shapiro-Wilk;**
+
+
+```{r}
+res.ShWilk <- tibble()
+
+for (v_ano in unique(df0$ano)) {
+  for (nm.var in colnames(df0 |> select(idh:idhi))) {
+    var <- ((df0 |> filter(!is.na(nm.var), ano==v_ano)) |> select(nm.var) |> as.vector())[[1]]
+    res <- as.list( shapiro.test(var) )
+    res.ShWilk <- rbind(
+      res.ShWilk,
+      tibble(variavel = nm.var, ano=v_ano, p.value = res$p.value, W = res$statistic)
+    )
+  }
+}; rm(v_ano, nm.var, var)
+
+res.ShWilk |> 
+  mutate(conf = case_when(p.value < .01 ~ "***",
+                          p.value < .05 ~ "**",
+                          p.value < .10 ~ "*",
+                          .default=NA),
+         .after=p.value) |> 
+  arrange(ano, desc(W))|> group_by(ano) |> 
+  gt(rowname_col="stub", locale="pt") |> sub_missing() |>
+  fmt_number(W, decimals=4) |> fmt_scientific(p.value,decimals=5) |> 
+  gtExtras::gt_plt_bar(W, keep_column=T) |> 
+  tab_options(
+    heading.align="left", heading.title.font.size=pct(110), heading.subtitle.font.size=pct(90),
+    column_labels.font.weight="bold", column_labels.font.size=pct(80),
+    column_labels.text_transform="uppercase", column_labels.background.color="gray95",
+    data_row.padding=px(2), row_group.padding=px(2), row_group.font.weight="bold",
+    table.font.size=pct(90), source_notes.font.size = pct(70)
+  ) |> 
+  tab_header(title = md("**Resultados do teste Shapiro-Wilk por ano e variável**"))
+```
+
+\
+
+## e. Normalidade XXX
+
+**Baseado nos itens anteriores, é possível afirmar que algumas das variáveis se aproximam de uma distribuição normal? Justifique.**
+
+XXXXXXX
+
+\
+
+# P06 Completude I XXX
+
+**Qualidade de dados tem sido um dos temas mais abordados nos projetos de estruturação em data analytics, sendo um dos principais indicadores do nível de maturidade das organizações. Um dos problemas mais comuns de qualidade é relacionado à completude de dados. Em suas palavras, como é definido completude? Qual o impacto em uma análise exploratória de dados?**
+
+
+
+
+\
+
+# P07 Completude II XXX
+
+**Qual a completude para cada uma das variáveis do seu banco de dados?**
+
+Checa se há valores nulos no dataset:
+
+```{r}
+colSums(is.na(df0)) |> as.data.frame() |> rownames_to_column() |> rename(coluna=1,nulos=2) |> 
+  mutate(completude = (nrow(df0)-nulos)/nrow(df0)) |> 
+  arrange(desc(nulos)) |> 
+  gt(rowname_col="stub", locale="pt") |> sub_missing() |>
+  fmt_integer(nulos) |> fmt_percent(completude, decimals=1) |> 
+  tab_options(
+    heading.align="left", heading.title.font.size=pct(110), heading.subtitle.font.size=pct(90),
+    column_labels.font.weight="bold", column_labels.font.size=pct(80),
+    column_labels.text_transform="uppercase", column_labels.background.color="gray95",
+    data_row.padding=px(2), row_group.padding=px(2), row_group.font.weight="bold",
+    table.font.size=pct(90), source_notes.font.size = pct(70),
+    grand_summary_row.padding=px(2), grand_summary_row.background.color="gray95"
+  )
+```
+
+\
+
+# P08 Imputação XXX
+
+**Realize uma operação de imputação de dados usando o pacote MICE.**
+
+\
+
+# P09 Shiny XXX
+
+**Crie um dashboard Shiny onde seja possível selecionar (tire um print-screen da tela final do sistema):**\
+
+a. uma variável da sua base de dados e um gráfico em linha seja mostrado na tela;\
+b. escolher a cor da linha do gráfico;\
+c. selecionar o limite inferior e superior do eixo X do gráfico;\
+d. selecionar o limite inferior e superior do eixo Y do gráfico.\
+
+
+```{r}
+
+```
+
+
+\
+
+# P10 Github XXX
+
+**Disponibilize os códigos (RMarkdown e Shiny) em uma plataforma de compartilhamento de códigos (sugestão GitHub)**
+
+
+[Link para repositório do GitHub](https://github.com/cakemit-edu/infnet-eda-pd)
+
+
+\
+
+# Fim
+
+Assim que terminar, salve o seu arquivo PDF e poste no Moodle. Utilize o seu nome para nomear o arquivo, identificando também a disciplina no seguinte formato: “nomedoaluno_nomedadisciplina_pd.PDF”.
+
+\
+
+# Referencias
+
+Freedman, D. and Diaconis, P. (1981) *On the histogram as a density estimator.* Zeitschrift fur Wahrscheinlichkeitstheorie und verwandte Gebiete 57, 453–476.
