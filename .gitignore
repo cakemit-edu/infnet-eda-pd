@@ -49,5 +49,7 @@ po/*~
 rsconnect/
 .Rproj.user
 
-# Rmarkdown previews
-*.nb.html
+
+# ADICIONAIS
+*.nb.html # Rmarkdown previews
+.trash/
