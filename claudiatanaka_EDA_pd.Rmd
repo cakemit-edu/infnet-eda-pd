@@ -102,7 +102,7 @@ O código a seguir usa o pacote `wbstats` para baixar tabela auxiliar de países
 ```{r}
 # Tabela auxiliar de códigos e classificações de países
 ta.countries <- wbstats::wb_countries() |> 
-  select(iso3c, country, region, renda.pc_cat = income_level) |> 
+  select(iso3c, country, region, rendapc_cat = income_level) |> 
   mutate(
     country = case_match(country,
                          "Korea, Dem. People's Rep." ~ "North Korea",
@@ -131,9 +131,11 @@ O código a seguir lê dados do IDH.
 
 ```{r}
 df.onu <- read.csv("_datasets/HDR23-24_Composite_indices_complete_time_series.csv",) |> 
-  select(-region, -country) |> 
+  select(-region, -country) |> select(-hdi_rank_2022) |> 
   # coloca a tabela "em pé" no estilo tidy
-  pivot_longer(4:1074) |> filter(!is.na(value)) |> 
+  pivot_longer(3:1073) |> 
+  # Remove obs que têm dados faltantes em TODAS as variáveis numéricas
+  filter(!is.na(value)) |> 
   # separa a coluna name em duas colunas: o nome do indicador e o ano
   separate(name, into=c("indicador","ano"), sep=-4, remove=T) |> 
   mutate(ano = as.integer(ano),
@@ -146,25 +148,31 @@ df.onu <- read.csv("_datasets/HDR23-24_Composite_indices_complete_time_series.cs
     "eys",       # Expected Years of Schooling (years)
     "mys",       # Mean Years of Schooling (years)
     "gnipc",     # Gross National Income Per Capita (2017 PPP$)
+    'ineq_le',   # Inequality in life expectancy,
+    'ineq_edu',  # Inequality in education,
+    'ineq_inc',  # Inequality in income,
     'ihdi'       # Inequality-adjusted Human Development Index
   )) |> 
   # Coloca a tabela "deitada" de forma que cada indicador fique em uma coluna
   pivot_wider(names_from=indicador, values_from=value) |> 
   mutate(across(where(is.character), ~if_else(.x=="",NA,.x))) |> 
-  # Customiza os nomes das variáveis
+  # Customiza os nomes das variáveis (GLOSSÁRIO)
   rename(
-    idh         = hdi,
-    exp.vida    = le,
-    escol.esp   = eys,
-    escol.media = mys,
-    idh_cat     = hdicode,
-    iso3c       = iso3,
-    idhi        = ihdi,
-    renda.pc    = gnipc,
-    idh_cat     = hdicode
-  ) |> select(-hdi_rank_2022)
+    iso3c       = iso3,     # Código identificador inequívoco do país
+    idh_cat     = hdicode,  # Categorias do IDH (Low, Medium, High, Very High)
+    idh         = hdi,      # Indice de Desenvolvimento Humano
+    rendapc     = gnipc,    # Renda nacional bruta per capita em US$ PPP constante de 2017
+    exp.vida    = le,       # Expectativa de vida ao nascer em anos
+    escol.esp   = eys,      # Anos de escolaridade esperada ao entrar no sistema educacional
+    escol.media = mys,      # Média de anos completados de escolaridade (adultos de 25 anos ou mais)
+    exp.vidai   = ineq_le,  # Desigualdade na expectativa de vida
+    escoli      = ineq_edu, # Desigualdade na escolaridade
+    rendai      = ineq_inc, # Desigualdade na renda per capita
+    idhi        = ihdi,     # Índice de desenvolvimento humano ajustado para desigualdade
+  ) |> 
+  relocate(idhi, .after=everything())
 
-fonte.un <- "PNUD (Programa das Nações Unidas para o Desenvolvimento)"
+fonte.un <- "Programa das Nações Unidas para o Desenvolvimento (PNUD), Human Development Report 2023/2024"
 ```
 
 \
@@ -190,10 +198,6 @@ fonte.wb <- "Banco Mundial, World Development Indicators."
 ```
 
 
-```{r include=FALSE}
-rm(df.wb0); gc()
-```
-
 
 \
 
@@ -202,21 +206,21 @@ O código a seguir reúne os datasets em uma base única.
 ```{r}
 df0 <- inner_join(ta.countries, df.onu, join_by(iso3c)) |> 
   left_join( df.wb, join_by(iso3c, ano) ) |> 
-  mutate(renda.pc_mil = renda.pc/1000, .after=idh) |> 
-  select(-renda.pc) |> 
-  relocate(pop_cat, .after=renda.pc_cat) |> 
-  relocate(pop_milhoes, .after=escol.media) |> 
   mutate(
-    renda.pc_cat = factor(renda.pc_cat, levels=c("Low income", 
-                                                 "Lower middle income", 
-                                                 "Upper middle income", 
-                                                 "High income"),
-                          ordered=T),
+    rendapc_cat = factor(rendapc_cat, levels=c("Low income", 
+                                               "Lower middle income", 
+                                               "Upper middle income", 
+                                               "High income"),
+                         ordered=T),
     idh_cat = factor(idh_cat, levels=c("Low", "Medium", "High", "Very High"),
                      ordered=T)
   ) |> 
-  # Remove países que têm dados faltantes em TODAS as variáveis numéricas
+  mutate(rendapc = rendapc/1000) |> rename(rendapc_mil = rendapc) |> 
+  relocate(pop_cat, .after=rendapc_cat) |> 
+  relocate(pop_milhoes, .after=idh) |> 
+  # Remove obs que têm dados faltantes em TODAS as variáveis numéricas
   pivot_longer(idh:idhi, values_drop_na=T) |> pivot_wider() |> 
+  filter(ano >= 2010) |> # o IDHI passou a ser medido a partir de 2010
   arrange(ano, iso3c)
 
 df1 <- df0 |> filter(ano %in% c(2012, 2022))
@@ -225,22 +229,24 @@ df1 <- df0 |> filter(ano %in% c(2012, 2022))
 
 \
 
-```{r}
-df1 |> summarise(n.paises = n_distinct(iso3c), .by=ano) |> arrange(ano) |> 
-  gt(rowname_col="stub", locale="pt") |> sub_missing() |>
-  fmt_integer(n.paises) |> 
-  tab_options(
-    heading.align="left", heading.title.font.size=pct(110), heading.subtitle.font.size=pct(90),
-    column_labels.font.weight="bold", column_labels.font.size=pct(80),
-    column_labels.text_transform="uppercase", column_labels.background.color="gray95",
-    data_row.padding=px(2), row_group.padding=px(2), row_group.font.weight="bold",
-    table.font.size=pct(90), source_notes.font.size = pct(70),
-  ) |> 
-  tab_header(title = md("**Quantidade de países por ano (n)**"))  
+```{r fig.width=5, fig.asp=.5}
+df0 |> summarise(n.paises = n_distinct(iso3c), .by=ano) |> arrange(ano) |> 
+  mutate(ano = as.factor(ano)) |> 
+  ggplot(aes(x=ano, y=n.paises)) +
+  geom_col(fill="slategray") +
+  geom_text(aes(label=scales::number(n.paises)), vjust = -0.5, size = 3) +
+  scale_y_continuous(expand=expansion(mult=c(0,.1)), breaks=NULL) +
+  scale_x_discrete() +
+  theme(panel.grid.major=element_blank(),
+        axis.title=element_blank(),
+        axis.text=element_text(size=8)) +
+  labs(title = "Quantidade de países no dataset por ano")
 ```
 
+
+
 ```{r include=FALSE}
-rm(df.onu, df.wb, ta.countries); gc()
+rm(df.onu, df.wb, df.wb0, ta.countries); gc()
 ```
 
 \
@@ -372,51 +378,61 @@ rm(p1,p2,p3); gc()
 
 Nota-se nas imagens a seguir que, 
 
-* As quatro variáveis que compõem o cálculo do IDH (expectativa de vida, escolaridade esperada, escolaridade média e renda per capita) apresentam correlação estatísticamente significativa e de alto grau com os dois índices (IDH e IDHI), o que era de se esperar já que o IDH é diretamente calculado a partir destas variáveis.
+O IDH e o IDHI têm uma correlação estatísticamente significativa, positiva e quase perfeita entre si (coeficientes próximos de 1) e que a relação se aproxima muito de uma reta (relação linear). Esse resultado era de se esperar, já que o IDHI é o IDH, apenas ajustado para a desigualdade.
 
-* As quatro variáveis que compõem o cálculo do IDH e do IDHI também apresentam forte correlação (e estatisticamente significativa) entre si.   
+As quatro variáveis que compõem o cálculo do IDH (`escol.esp`, `escol.media`, `exp.vida` e `rendapc`) apresentam correlações estatísticamente significativas, positivas e de alta intensidade com o IDH/IDHI. Quanto maior a escolaridade, expectativa de vida e renda per capita, maior o IDH/IDHI -- o que era de se esperar já que o IDH é diretamente calculado a partir destas variáveis.
 
-* A variável população total dos países não tem correlação com os índices nem com as variáveis que compõem o cálculo dos índices.     
+As quatro variáveis que compõem o cálculo do IDH e do IDHI também apresentam forte correlação (e estatisticamente significativa) entre si, apesar de serem correlações menos intensas que com o IDH/IDHI.   
+
+A relação entre `escol.*` e IDH/IDHI e entre `exp.vida` e IDH/IDHI se aproxima de uma reta, portanto há pouca diferença entre os resultados dos coeficientes de Pearson e Spearman. Ambos positivos e bastante fortes.
+
+A relação entre renda per capita e IDH/IDHI (assim como entre `rendapc` e `escol.*` e entre `rendapc` e `exp.vida`) se aproxima mais de uma curva exponencial ascendente, como pode-se verificar na scatter matrix plot e no fato que os coefficientes de Spearman são mais altos que os de Pearson para as correlações desta variável. Essa relação mostra que o aumento incremental nos níveis mais altos de escolaridade e expectativa de vida é menor do que os aumentos nos níveis mais altos de renda. Ou seja, os dados apontam para um certo patamar que se atinge em escolaridade e expectativa de vida, a partir do qual os ganhos incrementais são menores e que isso não ocorre com o nível de riqueza dos países.
+
+É curioso observar que as variáveis de desigualdade em `exp.vidai`, `escoli`, e `rendai` apresentam correlações estatísticamente significativas, negativas e de alta intensidade com o IDH, mesmo antes dessas desigualdades serem incorporadas no cálculo. Quanto menor a desigualdade em expectativa de vida, escolaridade e renda, maior é o IDH e vice versa. 
+
+As variáveis de desigualdade também apresentam correlações expressivas entre si e com sua variável correspondente.
+
+A população dos países não tem correlação com nenhuma das outras variáveis - seja linear ou não linear. Ou seja, o tamanho de um país não ajuda a determinar o nível de IDH/IDHI (que é a combinação de escolaridade, expectativa de vida e riqueza ajustados ou não para desigualdade).     
 :::
 
 
 **Correlação: Pearson**
 
 
-```{r fig.asp=1, fig.width=4}
-df1 |> filter(ano==max(ano)) |> 
-  select(idh:idhi) |> 
+```{r fig.asp=1, fig.width=5}
+testRes <- corrplot::cor.mtest(df1 |> filter(ano==max(ano)) |> select(idh:idhi), 
+                               conf.level = 0.95)
+
+df1 |> filter(ano==max(ano)) |> select(idh:idhi) |> 
   cor(method="pearson", use="pairwise.complete.obs") |> 
   corrplot::corrplot(
-    method="color", addgrid.col="gray",
-    type='lower', tl.col="darkgray", addCoef.col="gray", 
+    addgrid.col="gray", 
+    p.mat=testRes$p, insig="blank",         # Exclui as correlações com p-value menor que 0.05
+    type='lower', tl.col="darkgray", 
+    addCoef.col="gray", addCoefasPercent=T, # Inclui o coeficiente como porcentagem
     number.cex=.7, tl.cex=.8, cl.cex=.6, diag=F
   )
 ```
 
 \
 
-::: {.alert .alert-block .alert-info}
-**Análise:**
-
-O coeficiente de Spearman visto na figura a seguir confirma as observações encontradas pelo coeficiente de Pearson. Porém, no caso dos nossos dados, o coeficiente de Pearson, que é o mais frequentemente utilizado em análises de correlação, apresenta correlações um pouco mais baixas entre o IDHI e as variáveis que o compõem do que o coeficiente de Spearman.  Isso ocorre porque o coeficiente de Pearson assume uma relação linear entre duas variáveis para medir o grau de correlação entre elas e algumas variáveis podem ter uma relação não-linear entre si.     
-:::
-
-<br>
 
 **Correlação: Spearman**
 
-```{r fig.asp=1, fig.width=4}
-df1 |> filter(ano==2022) |> 
-  select(idh:idhi) |> 
+```{r fig.asp=1, fig.width=5}
+testRes <- corrplot::cor.mtest(df1 |> filter(ano==max(ano)) |> select(idh:idhi), 
+                               conf.level = 0.95)
+
+df1 |> filter(ano==max(ano)) |> select(idh:idhi) |> 
   cor(method="spearman", use="pairwise.complete.obs") |> 
   corrplot::corrplot(
-    method="color", addgrid.col="gray",
-    type='lower', tl.col="darkgray", addCoef.col="gray", 
+    addgrid.col="gray", 
+    p.mat=testRes$p, insig="blank",         # Exclui as correlações com p-value menor que 0.05
+    type='lower', tl.col="darkgray", 
+    addCoef.col="gray", addCoefasPercent=T, # Inclui o coeficiente como porcentagem
     number.cex=.7, tl.cex=.8, cl.cex=.6, diag=F
   )
 ```
-
 
 
 
@@ -424,11 +440,10 @@ df1 |> filter(ano==2022) |>
 df1 |> filter(ano==max(ano)) |> select(idh:idhi) |> 
   psych::pairs.panels(
     method = "spearman", 
-    hist.col = "slategray", 
-    pch=".",             # show data points as "."
-    density = TRUE,      # show density plots
-    stars=T,             # show confidence/relevance as stars on coef
-    gap=0,               # remove gap btw variables
+    hist.col = "slategray", rug=F, # histogram settings
+    stars=T,                       # show confidence as stars on coefficients
+    ellipses=F, gap=0,             # aesthetic settings
+    # ci = T, alpha=.05,             # draws confidence interval for linear model on scatter plots
     main="SCATTER MATRIX PLOT entre todas as variáveis do dataset, 2022"
   ) 
 ```
@@ -515,7 +530,7 @@ Como prefiro aplicar a mesma quantidade de bins em todas as variáveis para faci
 SERIA POSSÍVEL COLOCAR N.BINS NO GGPLOT?
 
 
-```{r fig.width=6, fig.asp=2}
+```{r fig.width=6, fig.asp=2.5}
 df1 |> pivot_longer(idh:idhi) |> 
   arrange(name) |> 
   ggplot(aes(x=value)) +
@@ -549,7 +564,7 @@ ggpubr::ggqqplot(df1 |> mutate(ano = as.factor(ano),
                                across(idh:idhi, scale)),
                  x = c("idh", "idhi",  
                        "escol.esp", "escol.media", "exp.vida", 
-                       "pop_milhoes", "renda.pc_mil"),
+                       "pop_milhoes", "rendapc_mil"),
                  palette = "Dark2", color="ano", conf.int=T,add="qqline",
                  combine = TRUE, size = 0.5)
 ```
@@ -645,7 +660,7 @@ Dessa forma, uma abordagem rápida e sem reflexão, incluindo a opção por não
 Proporção de dados faltantes (`missing_percent`) no dataset de todas as variáveis. A taxa de "completude" equivale a subtrair `missing_percent` de 100.
 
 ```{r}
-dlookr::diagnose(df1) |> 
+dlookr::diagnose(df0) |> 
   group_by(types) |> arrange(types, desc(missing_percent)) |> 
   gt(rowname_col="stub", locale="pt") |> sub_missing() |>
   fmt_integer(ends_with("_count")) |> fmt_number(missing_percent, decimals=1) |> 
@@ -664,8 +679,8 @@ dlookr::diagnose(df1) |>
 
 Completude das variáveis numéricas:
 
-```{r fig.width=6}
-naniar::vis_miss(df1, sort_miss=T, cluster=T)
+```{r fig.width=7}
+naniar::vis_miss(df0, sort_miss=T, cluster=T)
 ```
 
 \
@@ -673,7 +688,7 @@ naniar::vis_miss(df1, sort_miss=T, cluster=T)
 Combinações de dados faltantes simultâneos (na mesma observação):
 
 ```{r}
-naniar::gg_miss_upset(df1, order.by="degree")
+naniar::gg_miss_upset(df0, order.by="degree")
 ```
 
 \
@@ -681,18 +696,24 @@ naniar::gg_miss_upset(df1, order.by="degree")
 ::: {.alert .alert-block .alert-info}
 **Análise:**
 
-O IDHI é o dado mais importante porque é variável dependente e porque nos interessa analisar o IDH ajustado para a desigualdade. Porém o IDHI também é, disparado, a variável com menor completude (maior quantidade de dados faltantes). O IDH simples é calculado diretamente pelas 4 variáveis (escolaridade média, escolaridade esperada, expectativa de vida e renda per capita) que representam os 3 eixos do bem estar de um país: Educação, Saúde e Riqueza. 
+O IDH simples é calculado diretamente pelas 4 variáveis (`exp.vida`, `escol.media`, `escol.esp` e `rendapc`) que representam os 3 eixos do bem estar dos países: Educação, Saúde e Riqueza. O IDH só está ausente nas observações que não têm dado de escolaridade média. 
 
-Observa-se que o IDH tem a mesma quantidade de dados faltantes que a escolaridade média (a variável com mais dados faltantes entre as 4). Ou seja, como o IDH é calculado diretamente a partir destas 4 variáveis, ele só não está presente quando uma ou mais das variáveis está faltando, como pode-se ver no gráfico imediatamente acima, o que explica as observações faltantes só no IDHI é a dificuldade em obter informações sobre desigualdade.
+Sempre que o IDH está ausente, o IDHI também não é calculado, como era de se esperar.  
+
+Quando há um cálculo de IDH, a falta do IDHI se dá pela ausência da medida de desigualdade em escolaridade ou renda ou ambas. Assim, o IDHI é a variável com menor completude (IDHI ausente em 199 observações ou 22,6% do total), seja pela ausência do IDH ou pela ausência de medidas de desigualdade. 
+
+O IDHI é o dado mais importante porque é variável dependente e porque nos interessa analisar especificamente esse IDH ajustado para a desigualdade. Será possível estimar o IDHI (ou a desigualdade em renda e/ou escolaridade) para os dados faltantes?
 
 :::
 
 \
 
+## Teste de Little
+
 A seguir usamos o teste de Little (Little, 1988) para avaliar se os dados faltantes são completamente aleatórios (Missing Completely At Random - MCAR). A hipótese nula neste teste é que os dados faltantes são completamente aleatórios e a estatística do teste é um valor chi-quadrado (função [naniar::mcar_test()](https://naniar.njtierney.com/reference/mcar_test.html)).
 
 ```{r}
-naniar::mcar_test(select(df1, escol.media, escol.esp, exp.vida, renda.pc_mil, pop_milhoes, idhi, idh)) |> 
+naniar::mcar_test(select(df1, escol.media, escol.esp, exp.vida, rendapc_mil, pop_milhoes, idhi, idh)) |> 
   gt(rowname_col="stub", locale="pt") |> sub_missing() |>
   fmt_integer(c(df, missing.patterns)) |> fmt_scientific(c(p.value)) |> 
   tab_options(
@@ -708,37 +729,8 @@ naniar::mcar_test(select(df1, escol.media, escol.esp, exp.vida, renda.pc_mil, po
 ::: {.alert .alert-block .alert-info}
 **Análise:**
 
-Dado o baixo p-value (menor que 1%), é possível rejeitar a hipótese de que os dados faltantes sejam completamente aleatórios, apontando para a hipótese alternativa de que os dados faltantes das variáveis escolhidas sigam algum padrão não aleatório. O teste identificou 6 padrões de dados faltantes nessas variáveis.
-
+Dado o baixo p-value (menor que 1%), é possível rejeitar a hipótese de que os dados faltantes sejam completamente aleatórios, reforçando a hipótese alternativa de que os dados faltantes seguem padrão não aleatório.
 :::
-
-\
-
-> Será que é mais difícil obter dados confiáveis dos países com menos recursos (menor renda per capita)? A diferença não parece ser dramática e é maior nos países com nível de renda mais alto.
-
-```{r fig.width=6, fig.asp=.5}
-# res.na <- df1 |> pivot_longer(idh:idhi) |> 
-#   summarise(missing = is.na(sum(value)), .by=c(iso3c:ano))
-# 
-# res.na |> 
-#   summarise(pct.missing = sum(missing)/n(), .by=renda.pc_cat) |> 
-#   ggplot(aes(x=renda.pc_cat, y=pct.missing)) +
-#   geom_col(fill="slategray") +
-#   geom_text(aes(label=scales::percent(pct.missing, accuracy=.1)), 
-#             vjust = -0.5, size = 3) +
-#   scale_y_continuous(expand=expansion(mult=c(0,.1)), breaks=NULL) +
-#   scale_x_discrete() +
-#   theme(panel.grid.major=element_blank(), 
-#         axis.title=element_blank(),
-#         axis.text=element_text(size=8)) +
-#   labs(title = "Proporção de observações com dados faltantes",
-#        subtitle="Por nível de renda")
-```
-
-> Será que é mais difícil obter dados confiáveis dos países menores (população)? A diferença não parece ser dramática e é maior nos países com nível de renda mais alto.
-
-
-> Excluir os países com dados faltantes introduziria um viés na amostra pois as exclusões afetariam muito mais a representatividade dos pequenos países com menor renda.
 
 
 \
@@ -753,6 +745,41 @@ Preenche os dados faltantes usando k-nearest-neighbors -- knn pelo pacote `mice`
 
 ```
 
+
+\
+
+Realizando análise da relação entre a distribuição de missing e das variáveis observadas
+
+```{r}
+
+```
+
+
+> Será que é mais difícil obter dados confiáveis dos países com menos recursos (menor renda per capita)? A diferença não parece ser dramática e é maior nos países com nível de renda mais alto.
+
+```{r fig.width=6, fig.asp=.5}
+res.na <- df1 |> pivot_longer(idh:idhi) |>
+  summarise(missing = is.na(sum(value)), .by=c(iso3c:ano))
+
+res.na |>
+  summarise(pct.missing = sum(missing)/n(), .by=rendapc_cat) |>
+  ggplot(aes(x=rendapc_cat, y=pct.missing)) +
+  geom_col(fill="slategray") +
+  geom_text(aes(label=scales::percent(pct.missing, accuracy=.1)),
+            vjust = -0.5, size = 3) +
+  scale_y_continuous(expand=expansion(mult=c(0,.1)), breaks=NULL) +
+  scale_x_discrete() +
+  theme(panel.grid.major=element_blank(),
+        axis.title=element_blank(),
+        axis.text=element_text(size=8)) +
+  labs(title = "Proporção de observações com dados faltantes",
+       subtitle="Por nível de renda")
+```
+
+> Será que é mais difícil obter dados confiáveis dos países menores (população)? A diferença não parece ser dramática e é maior nos países com nível de renda mais alto.
+
+
+> Excluir os países com dados faltantes introduziria um viés na amostra pois as exclusões afetariam muito mais a representatividade dos pequenos países com menor renda.
 
 \
 
@@ -809,4 +836,4 @@ Little, Roderick J. A. 1988. *"A Test of Missing Completely at Random for Multiv
 
 \
 
-UNDP (United Nations Development Programme). 2024. [Human Development Report 2023/2024](https://hdr.undp.org/content/human-development-report-2023-24). New York. [[Human Development Index website](https://hdr.undp.org/data-center/human-development-index#/indicies/HDI%3E)] e [[Inequality-adjusted Human Development Index website](https://hdr.undp.org/inequality-adjusted-human-development-index#/indicies/IHDI)]. Acessados em 09/04/2024.
+Programa das Nações Unidas para o Desenvolvimento (PNUD). 2024. [Human Development Report 2023/2024](https://hdr.undp.org/content/human-development-report-2023-24). New York. [[Human Development Index website](https://hdr.undp.org/data-center/human-development-index#/indicies/HDI%3E)] e [[Inequality-adjusted Human Development Index website](https://hdr.undp.org/inequality-adjusted-human-development-index#/indicies/IHDI)]. Acessados em 09/04/2024.
