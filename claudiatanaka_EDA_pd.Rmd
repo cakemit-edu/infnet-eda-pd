@@ -363,7 +363,7 @@ p1 + p2 + p3 + plot_annotation(
 ```
 
 ```{r include=FALSE}
-rm(p1,p2,p3); gc()
+rm(p1,p2,p3, df1.norm, df1.padr); gc()
 ```
 
 \
@@ -448,6 +448,10 @@ df1 |> filter(ano==max(ano)) |> select(idh:idhi) |>
   ) 
 ```
 
+
+```{r include=FALSE}
+rm(testRes); gc()
+```
 
 
 
@@ -548,25 +552,35 @@ df1 |> pivot_longer(idh:idhi) |>
 
 \
 
-## c. Q-Q plot XX
+## c. Q-Q plot
 
 **Crie um gráfico Q-Q para cada variável de sua base de dados. (use as funções presentes no pacote `ggpubr`);**
 
 Em estatística, um Q–Q plot (quantile-quantile plot) é um método de visualização gráfica para comparar duas distribuições de probabilidade traçando seus quantis um contra o outro. Um ponto (x, y) no gráfico corresponde a um dos quantis da segunda distribuição (coordenada y) plotado em relação ao mesmo quantil da primeira distribuição (coordenada x).
 
-Se as duas distribuições comparadas forem semelhantes, os pontos no Q–Q plot ficarão aproximadamente na linha de identidade $y = x$. Se as distribuições estiverem linearmente relacionadas, os pontos no Q–Q plot ficarão aproximadamente em uma linha reta, mas não necessariamente na linha $y = x$. Os Q–Q plots também podem ser usados como uma forma gráfica de estimar parâmetros em uma família de distribuições em escala de localização.
+Se as duas distribuições comparadas forem semelhantes, os pontos no Q–Q plot ficarão aproximadamente na linha de identidade $y = x$. Se as distribuições estiverem linearmente relacionadas, os pontos no Q–Q plot ficarão aproximadamente em uma linha reta, mas não necessariamente na linha $y = x$. 
 
-Um Q–Q plot é usado para comparar as formas das distribuições, fornecendo uma visão gráfica de como propriedades como localização, escala e assimetria são semelhantes ou diferentes nas duas distribuições. Os Q–Q plots podem ser usados para comparar coleções de dados ou distribuições teóricas. O uso de Q-Q plots para comparar duas amostras de dados pode ser visto como uma abordagem não paramétrica para comparar suas distribuições subjacentes. Um Q–Q plot geralmente é mais útil para um diagnóstico do que comparar os histogramas das amostras, mas é um método menos conhecido. Os Q–Q plots são comumente usados para comparar um conjunto de dados com um modelo teórico, podendo fornecer uma avaliação visual da qualidade do ajuste, em vez de ser reduzida a uma estatística de resumo numérico. Os Q–Q plots também podem ser usados para comparar duas distribuições teóricas entre si. Como os Q–Q plots comparam distribuições, não há necessidade de os valores serem observados como pares, como em um gráfico de dispersão, ou mesmo de que os números de valores nos dois grupos sendo comparados sejam iguais.
+Assim, um Q–Q plot é frequentemente usado para comparar as formas das distribuições, fornecendo uma visão gráfica de como propriedades como localização, escala e assimetria são semelhantes ou diferentes nas duas distribuições. 
+
+Os Q–Q plots também podem ser usados para comparar coleções de dados ou distribuições teóricas ou para comparar um conjunto de dados com um modelo teórico, podendo fornecer uma avaliação visual da qualidade do ajuste, em vez de ser reduzida a uma estatística de resumo numérico. 
+
 
 
 ```{r fig.width=10, fig.asp=1}
-ggpubr::ggqqplot(df1 |> mutate(ano = as.factor(ano),
-                               across(idh:idhi, scale)),
-                 x = c("idh", "idhi",  
-                       "escol.esp", "escol.media", "exp.vida", 
-                       "pop_milhoes", "rendapc_mil"),
-                 palette = "Dark2", color="ano", conf.int=T,add="qqline",
-                 combine = TRUE, size = 0.5)
+suppressWarnings(print(
+  ggpubr::ggqqplot(
+    df1 |> 
+      mutate(
+        ano = as.factor(ano),    
+        across(idh:idhi, scale) # padroniza a escala das variáveis numéricas (z-score)
+      ), 
+    x = c("idh", "idhi",  
+          "escol.esp", "escol.media", "exp.vida", 
+          "pop_milhoes", "rendapc_mil"),
+    palette = "Dark2", color="ano", conf.int=T,add="qqline",
+    combine = TRUE, size = 0.5
+  )
+))
 ```
 
 \
@@ -575,6 +589,7 @@ ggpubr::ggqqplot(df1 |> mutate(ano = as.factor(ano),
 
 **Execute um teste de normalidade Shapiro-Wilk;**
 
+O teste de Shapiro-Wilk (Shapiro e Wilk, 1965) testa a hipótese nula de que uma amostra pertence a uma população com distribuição normal, usando a estatística $W$. Dessa forma, se o p-valor for menor que um limite pré-determinado $\alpha$ então podemos rejeitar a hipótese de que a amostra foi coletada de uma população com distribuição normal, o que aponta para a hipótese alternativa de que a amostra não pertence a uma distribuição normal. 
 
 ```{r}
 res.ShWilk <- tibble()
@@ -588,7 +603,7 @@ for (v_ano in unique(df1$ano)) {
       tibble(variavel = nm.var, ano=v_ano, p.value = res$p.value, W = res$statistic)
     )
   }
-}; rm(v_ano, nm.var, var)
+}; rm(v_ano, nm.var, var, res)
 
 res.ShWilk |> 
   mutate(conf = case_when(p.value < .01 ~ "***",
@@ -613,22 +628,23 @@ res.ShWilk |>
 
 \
 
-## e. Normalidade XX
+## e. Normalidade
 
 **Baseado nos itens anteriores, é possível afirmar que algumas das variáveis se aproximam de uma distribuição normal? Justifique.**
 
 ::: {.alert .alert-block .alert-info}
-A única variável da amostra que parece se aproximar de uma distribuição normal é a escolaridade esperada em 2021 (`escol.esp`).
+
+A única variável da amostra que dá indícios de se aproximar de uma distribuição normal é a escolaridade esperada - tanto pela visualização gráfica dos histogramas quanto dos Q-Q plots quanto pelos resultados do teste de Shapiro-Wilk nos dois anos.
 
 A assimetria (skewness) da população e da renda per capita já observada anteriormente nas estatísticas descritivas (P03) é confirmada graficamente nos histogramas.
 
-A variável população (que não entra no cálculo do IDHI) apresenta tendência a outliers extremos e confirma o que havia sido observado com uma curtose bastante alta nos dois anos.
+A variável população (que não entra no cálculo do IDH/IDHI) apresenta tendência a outliers extremos e confirma o que havia sido observado com uma curtose bastante alta nos dois anos (P03).
 
-Na comparação de 2011 com 2021, os países aparentam ter aumentado os anos de escolaridade média e de escolaridade esperada.
+Na comparação de 2012 com 2022 dos histogramas, os países aparentam ter aumentado os anos de escolaridade média e de escolaridade esperada.
 
-É difícil determinar se a distribuição expectativa de vida dos países melhorou ou piorou entre 2011 e 2021 pois apesar de haver diminuição nos bins mais baixos, há também uma queda expressiva nos dois últimos bins (mais de 75 anos).
+No caso da expectativa de vida, é difícil determinar se a distribuição dos países melhorou ou piorou nessa década pois apesar de haver alguma queda na densidade dos bins inferiores, há também uma queda expressiva no penúltimo bin (~75-80 anos).
 
-No caso da renda per capita, a distribuiçao parece ter piorado, com uma concentração maior de países no primeiro bin. Há que se tomar cuidado com o aumento da média e dos valores máximos de renda per capita por país pois estes valores são nominais (sem ajuste de inflação para o período).
+No caso da renda per capita, a distribuiçao parece ter piorado, com uma concentração maior de países no primeiro bin. Considerando que os valores estão expressos em US$ constantes (ajustados para a inflação do período), os poucos países mais ricos tiveram ganhos reais no valor da renda per capita média e se tornaram mais ricos, aumentando a distância em relação à renda média dos países mais pobres.
 :::
 
 \
@@ -643,7 +659,7 @@ A decisão sobre como lidar com dados faltantes quando eles ocorrem na amostra d
 
 Para decidir o que fazer há que se considerar cuidadosamente as possíveis causas dos dados faltantes pois qualquer uma dessas opções pode inadvertidamente distorcer ou mascarar os resultados da análise. É comum ver análises em que o cientista de dados toma o caminho mais curto: excluir as observações que tenham dados faltantes ou fazer imputação pela média. Por tomar o caminho mais simples ou mais rápido, pode-se estar ignorando que os dados faltantes podem estar com uma distribuição bem diferente da distribuição dos dados existentes na amostra (por exemplo, os dados faltantes podem estar mais concentrados em um período de tempo, ou uma categoria específica de produtos, ou uma localização geográfica). 
 
-Dessa forma, uma abordagem rápida e sem reflexão, incluindo a opção por não fazer nada e deixar os dados como estão, pode estar introduzindo (ou perpetuando) um viés na amostra que levará a conclusões distorcidas - mesmo que sejam baseadas nos dados existentes.
+Dessa forma, uma abordagem rápida e sem reflexão, incluindo a opção por não fazer nada e deixar os dados como estão, pode estar introduzindo (ou perpetuando) um viés na amostra que levará a conclusões distorcidas -- mesmo que sejam baseadas nos dados existentes.
 
 
 > “The best thing to do with missing values is not to have any” - Gertrude Mary Cox.
@@ -651,7 +667,7 @@ Dessa forma, uma abordagem rápida e sem reflexão, incluindo a opção por não
 
 \
 
-# P07 Completude II X
+# P07 Completude II
 
 **Qual a completude para cada uma das variáveis do seu banco de dados?**
 
@@ -735,60 +751,148 @@ Dado o baixo p-value (menor que 1%), é possível rejeitar a hipótese de que os
 
 \
 
-# P08 Imputação XXX
+# P08 Imputação
 
 **Realize uma operação de imputação de dados usando o pacote MICE.**
 
-Preenche os dados faltantes usando k-nearest-neighbors -- knn pelo pacote `mice` usando a base com a série histórica completa:
-
 ```{r}
+library(mice)
 
+df0.mice <- df0 |> select(-country) |> 
+  mutate(across(c(iso3c, region), as.factor))
+
+m.imp <- 5L
 ```
 
 
 \
 
-Realizando análise da relação entre a distribuição de missing e das variáveis observadas
+## PMM
+
+O código a seguir faz imputação múltipla para preencher os dados faltantes pela metodologia `pmm` (predictive mean match) no pacote `mice` (van Buuren, 2011) sobre a base com a série histórica completa. 
+
 
 ```{r}
-
+res.pmm <- mice::mice(
+  df0.mice, method="pmm", printFlag=F, seed=500,
+  m=m.imp,  # número de imputações
+  maxit=5,  # número de iterações
+)
 ```
 
 
-> Será que é mais difícil obter dados confiáveis dos países com menos recursos (menor renda per capita)? A diferença não parece ser dramática e é maior nos países com nível de renda mais alto.
-
-```{r fig.width=6, fig.asp=.5}
-res.na <- df1 |> pivot_longer(idh:idhi) |>
-  summarise(missing = is.na(sum(value)), .by=c(iso3c:ano))
-
-res.na |>
-  summarise(pct.missing = sum(missing)/n(), .by=rendapc_cat) |>
-  ggplot(aes(x=rendapc_cat, y=pct.missing)) +
-  geom_col(fill="slategray") +
-  geom_text(aes(label=scales::percent(pct.missing, accuracy=.1)),
-            vjust = -0.5, size = 3) +
-  scale_y_continuous(expand=expansion(mult=c(0,.1)), breaks=NULL) +
-  scale_x_discrete() +
-  theme(panel.grid.major=element_blank(),
-        axis.title=element_blank(),
-        axis.text=element_text(size=8)) +
-  labs(title = "Proporção de observações com dados faltantes",
-       subtitle="Por nível de renda")
-```
-
-> Será que é mais difícil obter dados confiáveis dos países menores (população)? A diferença não parece ser dramática e é maior nos países com nível de renda mais alto.
-
-
-> Excluir os países com dados faltantes introduziria um viés na amostra pois as exclusões afetariam muito mais a representatividade dos pequenos países com menor renda.
 
 \
 
-Dado que a maioria das variáveis não apresenta uma distribuição Gaussiana normal, vamos comparar as distribuições das variáveis antes e depois do preenchimento usando o teste de Wilcox:
+A seguir avalia-se o resultado das imputações na variável IDHI e compara-se as distribuições das variáveis antes e depois do preenchimento:
 
-```{r}
+\
 
+**Scatterplot de IDHI x IDH**
+
+```{r fig.width=6}
+xyplot(res.pmm, idhi ~ idh, col = c("grey", mdc(2)))
 ```
 
+Seria esperado observar que o padrão dos pontos na cor magenta (preenchidos) se aproximasse ou ficasse sobreposto ao padrão dos pontos cinza (originais). Esse gráfico mostra que o padrão das imputações e o padrão dos dados originais são completamente diferentes pelo método pmm.
+
+\
+
+**Densidades das imputações x dados originais**
+
+```{r fig.width=6}
+densityplot(res.pmm, ~ idhi, col = c("grey", mdc(2)))
+```
+
+A densidade dos dados preenchidos para cada imputação aparece em magenta e a densidade dos dados originais aparece em cinza. Esperaría-se que a densidade dos dados imputados fosse similar à dos dados originais, o que não ocorre.
+
+
+\
+
+**Strip plot**
+
+Comparação da distribuição de variáveis selecionadas (numéricas e categóricas). 
+Pontos em magenta ressaltam as observações com dados de IDHI faltantes no dataset completo.
+
+```{r fig.asp=1, fig.width=8}
+mice::stripplot(
+  res.pmm, idhi+exp.vidai+escoli+rendai+idh+rendapc_cat+pop_cat+idh_cat+region ~ .imp,
+  na = idhi, 
+  col = c("grey", mdc(2)), pch = c(1, 20)
+)
+```
+No gráfico do IDHI, nota-se que o método pmm concentrou os preenchimentos nos limites superior ou inferior dos dados originais. Porém, observa-se nas outras variáveis que as observações sem IDHI estão bem distribuídas/ espalhadas nas outras variáveis.
+
+
+
+```{r include=FALSE}
+rm(res.pmm); gc()
+```
+
+
+\
+
+## Midas touch
+
+O código a seguir faz imputação múltipla pela metodologia `midastouch` (pmm ponderado) no pacote `mice` sobre a base com a série histórica completa.
+
+
+```{r}
+res.midas <- mice::mice(
+  df0.mice, method="midastouch", printFlag=F, seed=1,
+  m=m.imp,  # número de imputações
+  maxit=5,  # número de iterações
+)
+```
+
+
+\
+
+**Scatterplot de IDHI x IDH**
+
+```{r fig.width=6}
+xyplot(res.midas, idhi ~ idh, col = c("grey", mdc(2)))
+```
+
+Usando a metodologia do "toque de midas" os padrões ficam bem mais próximos, porém ainda há alguns vazios nas áreas cinza.
+
+\
+
+**Sobreposição das densidades das imputações x dados originais**
+
+```{r fig.width=6}
+densityplot(res.midas, ~ idhi, col = c("grey", mdc(2)))
+```
+
+Apesar da melhoria notável na densidade comparado ao método pmm, esperaría-se que a densidade dos dados imputados fosse mais similar à dos dados originais.
+
+
+\
+
+**Strip plot**
+
+Comparação da distribuição de variáveis selecionadas (numéricas e categóricas). 
+Pontos em magenta ressaltam as observações com dados de IDHI faltantes no dataset completo.
+
+```{r fig.asp=1, fig.width=8}
+mice::stripplot(
+  res.midas, idhi+exp.vidai+escoli+rendai+idh+rendapc_cat+pop_cat+idh_cat+region ~ .imp,
+  na = idhi, 
+  col = c("grey", mdc(2)), pch = c(1, 20)
+)
+```
+::: {.alert .alert-block .alert-info}
+**Análise:**
+
+O método `midastouch` teve resultados melhores que o `pmm`, mas é "custoso" em termos de processamento e o resultado não me parece suficiente. Seria necessário procurar outros métodos, talvez em outros pacotes como `simputation`.
+:::
+
+
+\
+
+Recursos adicionais:
+
+[R-bloggers: Imputing missing data with R; MICE package](https://www.r-bloggers.com/2015/10/imputing-missing-data-with-r-mice-package/)
 
 
 
@@ -828,12 +932,20 @@ Assim que terminar, salve o seu arquivo PDF e poste no Moodle. Utilize o seu nom
 
 \
 
-Freedman, D. and Diaconis, P. 1981. *On the histogram as a density estimator.* Zeitschrift fur Wahrscheinlichkeitstheorie und verwandte Gebiete 57, 453–476.\
+Freedman, D. and Diaconis, P. (1981). *On the histogram as a density estimator.* Zeitschrift fur Wahrscheinlichkeitstheorie und verwandte Gebiete, 57, 453–476. https://doi.org/10.1007/BF01025868
 
 \
 
-Little, Roderick J. A. 1988. *"A Test of Missing Completely at Random for Multivariate Data with Missing Values."* Journal of the American Statistical Association 83 (404): 1198--1202. [[doi:10.1080/01621459.1988.10478722.\\\\](doi:10.1080/01621459.1988.10478722.\){.uri}]([doi:10.1080/01621459.1988.10478722.\\](doi:10.1080/01621459.1988.10478722.)%7B.uri%7D){.uri}
+Little, Roderick J. A. 1988. *A Test of Missing Completely at Random for Multivariate Data with Missing Values.* Journal of the American Statistical Association, 83(404), 1198–1202. https://doi.org/10.2307/2290157
 
 \
 
-Programa das Nações Unidas para o Desenvolvimento (PNUD). 2024. [Human Development Report 2023/2024](https://hdr.undp.org/content/human-development-report-2023-24). New York. [[Human Development Index website](https://hdr.undp.org/data-center/human-development-index#/indicies/HDI%3E)] e [[Inequality-adjusted Human Development Index website](https://hdr.undp.org/inequality-adjusted-human-development-index#/indicies/IHDI)]. Acessados em 09/04/2024.
+Programa das Nações Unidas para o Desenvolvimento (PNUD). (2024). [*Human Development Report 2023/2024*](https://hdr.undp.org/content/human-development-report-2023-24). New York. [[Human Development Index website](https://hdr.undp.org/data-center/human-development-index#/indicies/HDI%3E)] e [[Inequality-adjusted Human Development Index website](https://hdr.undp.org/inequality-adjusted-human-development-index#/indicies/IHDI)]. Acessados em 09/04/2024.
+
+\
+
+Shapiro, S. S., & Wilk, M. B. (1965). *An Analysis of Variance Test for Normality (Complete Samples).* Biometrika, 52(3/4), 591–611. https://doi.org/10.2307/2333709
+
+\
+
+van Buuren, S., & Groothuis-Oudshoorn, K. (2011). [*mice: Multivariate Imputation by Chained Equations in R*](https://www.jstatsoft.org/article/view/v045i03). Journal of Statistical Software, 45(3), 1–67. https://doi.org/10.18637/jss.v045.i03
