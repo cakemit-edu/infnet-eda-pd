@@ -1,0 +1,103 @@
+---
+title: "Shiny app para PD EDA"
+runtime: shiny
+output: 
+  flexdashboard::flex_dashboard:
+    theme:
+      bg: "#E0E0E0"
+      fg: "#101010" 
+      primary: "#101010"
+      base_font:
+        google: Prompt
+      code_font:
+        google: JetBrains Mono
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+# library(knitr)
+# library(rmarkdown)
+# library(kableExtra)
+library(shiny)
+# library(summarytools)
+# library(stargazer)
+# library(mice)
+# Install thematic and un-comment for themed static plots (i.e., ggplot2)
+# thematic::thematic_rmd()
+theme_set(theme_light())
+theme_update(
+  panel.grid.minor = element_blank(),
+  plot.title = element_text(size = 12, colour = "gray30", face = "bold"),
+  plot.subtitle = element_text(face = 'italic', colour = "gray50", size = 10),
+  plot.caption = element_text(colour = "gray50", hjust=0, size = 8),
+  legend.title = element_blank(),
+  axis.text = element_text(size=12)
+)
+```
+
+
+
+```{r global, include=FALSE}
+df0 <- arrow::read_parquet("_datasets/df_consolidada.parquet") |> 
+  select(country:ano, idh, idhi) |> 
+  filter(!(is.na(idh) & is.na(idhi)))
+
+ta.colors <- tibble(
+  hex.code = RColorBrewer::brewer.pal(n=8, name="Dark2"),
+  nm.cor = c("Verde", "Laranja", "Roxo", "Rosa", "Verde claro", "Bege", "Marrom", "Cinza")
+) |> 
+  arrange(nm.cor)
+```
+
+
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+```{r}
+selectInput("country", h4("País"), 
+            arrange(distinct(df0, country), country)$country,
+            selected="Brazil")
+
+selectInput("color", h4("Cor da linha"), 
+            ta.colors$nm.cor, 
+            selected="Verde")
+
+sliderInput("periodo", label = h4("Período"), 
+            min=min(df0$ano), max=max(df0$ano), value=c(min(df0$ano), max(df0$ano)),
+            step=1, sep="")
+
+
+sliderInput("yvar", label=h4("Eixo Y"),
+            min=0, max=1, step=0.05, value=c(0,1))
+```
+
+
+
+
+Column
+-----------------------------------------------------------------------
+
+### Índice de Desenvolvimento Humano Ajustado à Desigualdade (IDHAD)
+
+```{r}
+renderPlot({
+  
+  df0 |> 
+    filter(country==input$country) |> 
+    filter(between(ano, as.integer(input$periodo[1]), as.integer(input$periodo[2]))) |> 
+    filter(between(idhi, input$yvar[1], input$yvar[2])) |>
+    mutate(ano=as.factor(ano)) |> 
+    ggplot(aes(x=ano, y=idhi)) +
+    geom_line(aes(group=1), color=filter(ta.colors, nm.cor==input$color)$hex.code,
+              size=1) + 
+    geom_point(color=filter(ta.colors, nm.cor==input$color)$hex.code, size=2) +
+    # coord_cartesian(ylim=c(input$ymin, input$ymax)) +
+    labs(x="Ano", y="IDHAD")
+  
+})
+```
+

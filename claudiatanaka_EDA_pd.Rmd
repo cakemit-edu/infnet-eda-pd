@@ -251,7 +251,7 @@ rm(df.onu, df.wb, df.wb0, ta.countries); gc()
 
 \
 
-# P03 Estatísticas descritivas X
+# P03 Estatísticas descritivas
 
 **Utilizando o pacote `summarytools` (função `descr`), descreva estatisticamente a sua base de dados.**
 
@@ -287,8 +287,6 @@ res.DescrStat |> mutate(Pct.Valid = Pct.Valid/100) |>
 \
 
 ::: {.alert .alert-block .alert-info}
-**Análise:**
-
 As distribuições das variáveis de escolaridade parecem apontar leve melhoria (aumentaram os anos de escolaridade média e de escolaridade esperada dos países) entre 2011 e 2021 porque tanto as médias quanto as medianas aumentaram nesses dois indicadores.\
 
 
@@ -307,7 +305,7 @@ O indicador de expectativa de vida em anos parece apontar tendência oposta à d
 Renda e população são significativamente diferentes das outras distribuições, não apenas em escala, mas também em assimetria (skewness), com uma cauda longa à direita da distribuição (concentração de países com menos renda per capita e menor população).\
 
 
-No caso da população, é possível que dois países que são outliers extremos (China e Índia têm população \~4x maior que os Estados Unidos, que é o terceiro maior país) estejam nos impedindo de enxergar a distribuição da grande maioria dos países.\
+No caso da população, que tem uma curtose elevada, é possível que os dois países que são outliers extremos (China e Índia têm população cerca de 4x a dos Estados Unidos, que é o terceiro maior) estejam nos impedindo de enxergar a distribuição.\
 
 
 Como o IDH / IDHI são índices calculados a partir das outras variáveis exceto população, vamos fazer sua análise na conclusão do projeto.
@@ -374,8 +372,6 @@ rm(p1,p2,p3, df1.norm, df1.padr); gc()
 
 
 ::: {.alert .alert-block .alert-info}
-**Análise:**
-
 Nota-se nas imagens a seguir que, 
 
 O IDH e o IDHI têm uma correlação estatísticamente significativa, positiva e quase perfeita entre si (coeficientes próximos de 1) e que a relação se aproxima muito de uma reta (relação linear). Esse resultado era de se esperar, já que o IDHI é o IDH, apenas ajustado para a desigualdade.
@@ -395,6 +391,7 @@ As variáveis de desigualdade também apresentam correlações expressivas entre
 A população dos países não tem correlação com nenhuma das outras variáveis - seja linear ou não linear. Ou seja, o tamanho de um país não ajuda a determinar o nível de IDH/IDHI (que é a combinação de escolaridade, expectativa de vida e riqueza ajustados ou não para desigualdade).     
 :::
 
+\
 
 **Correlação: Pearson**
 
@@ -485,9 +482,9 @@ A distribuição normal é caracterizada por uma curva simétrica em forma de si
 \
 
 
-## b. Histograma X
+## b. Histograma
 
-**b. Crie um histograma para cada variável da sua base de dados. Justifique a escolha do número de bins para seu trabalho. (usando o pacote `ggplot`);**
+**Crie um histograma para cada variável da sua base de dados. Justifique a escolha do número de bins para seu trabalho. (usando o pacote `ggplot`);**
 
 O número de bins do histograma é uma escolha arbitrária e está diretamente ligada à amplitude que se deseja definir como base de cada barra contígua, para o caso onde se trabalha com amplitudes iguais para todos intervalos.\
 
@@ -531,7 +528,6 @@ df1 |>
 
 Como prefiro aplicar a mesma quantidade de bins em todas as variáveis para facilitar a comparação visual dos histogramas, optei por 7 bins.
 
-SERIA POSSÍVEL COLOCAR N.BINS NO GGPLOT?
 
 
 ```{r fig.width=6, fig.asp=2.5}
@@ -704,14 +700,12 @@ naniar::vis_miss(df0, sort_miss=T, cluster=T)
 Combinações de dados faltantes simultâneos (na mesma observação):
 
 ```{r}
-naniar::gg_miss_upset(df0, order.by="degree")
+naniar::gg_miss_upset(df0)
 ```
 
 \
 
 ::: {.alert .alert-block .alert-info}
-**Análise:**
-
 O IDH simples é calculado diretamente pelas 4 variáveis (`exp.vida`, `escol.media`, `escol.esp` e `rendapc`) que representam os 3 eixos do bem estar dos países: Educação, Saúde e Riqueza. O IDH só está ausente nas observações que não têm dado de escolaridade média. 
 
 Sempre que o IDH está ausente, o IDHI também não é calculado, como era de se esperar.  
@@ -743,8 +737,6 @@ naniar::mcar_test(select(df1, escol.media, escol.esp, exp.vida, rendapc_mil, pop
 ```
 
 ::: {.alert .alert-block .alert-info}
-**Análise:**
-
 Dado o baixo p-value (menor que 1%), é possível rejeitar a hipótese de que os dados faltantes sejam completamente aleatórios, reforçando a hipótese alternativa de que os dados faltantes seguem padrão não aleatório.
 :::
 
@@ -775,7 +767,7 @@ O código a seguir faz imputação múltipla para preencher os dados faltantes p
 ```{r}
 res.pmm <- mice::mice(
   df0.mice, method="pmm", printFlag=F, seed=500,
-  m=m.imp,  # número de imputações
+  m=m.imp,  # número de partições
   maxit=5,  # número de iterações
 )
 ```
@@ -794,7 +786,10 @@ A seguir avalia-se o resultado das imputações na variável IDHI e compara-se a
 xyplot(res.pmm, idhi ~ idh, col = c("grey", mdc(2)))
 ```
 
+
+::: {.alert .alert-block .alert-info}
 Seria esperado observar que o padrão dos pontos na cor magenta (preenchidos) se aproximasse ou ficasse sobreposto ao padrão dos pontos cinza (originais). Esse gráfico mostra que o padrão das imputações e o padrão dos dados originais são completamente diferentes pelo método pmm.
+:::
 
 \
 
@@ -804,7 +799,10 @@ Seria esperado observar que o padrão dos pontos na cor magenta (preenchidos) se
 densityplot(res.pmm, ~ idhi, col = c("grey", mdc(2)))
 ```
 
+
+::: {.alert .alert-block .alert-info}
 A densidade dos dados preenchidos para cada imputação aparece em magenta e a densidade dos dados originais aparece em cinza. Esperaría-se que a densidade dos dados imputados fosse similar à dos dados originais, o que não ocorre.
+:::
 
 
 \
@@ -821,7 +819,11 @@ mice::stripplot(
   col = c("grey", mdc(2)), pch = c(1, 20)
 )
 ```
+
+
+::: {.alert .alert-block .alert-info}
 No gráfico do IDHI, nota-se que o método pmm concentrou os preenchimentos nos limites superior ou inferior dos dados originais. Porém, observa-se nas outras variáveis que as observações sem IDHI estão bem distribuídas/ espalhadas nas outras variáveis.
+:::
 
 
 
@@ -840,7 +842,7 @@ O código a seguir faz imputação múltipla pela metodologia `midastouch` (pmm 
 ```{r}
 res.midas <- mice::mice(
   df0.mice, method="midastouch", printFlag=F, seed=1,
-  m=m.imp,  # número de imputações
+  m=m.imp,  # número de partições
   maxit=5,  # número de iterações
 )
 ```
@@ -854,7 +856,10 @@ res.midas <- mice::mice(
 xyplot(res.midas, idhi ~ idh, col = c("grey", mdc(2)))
 ```
 
+
+::: {.alert .alert-block .alert-info}
 Usando a metodologia do "toque de midas" os padrões ficam bem mais próximos, porém ainda há alguns vazios nas áreas cinza.
+:::
 
 \
 
@@ -864,7 +869,10 @@ Usando a metodologia do "toque de midas" os padrões ficam bem mais próximos, p
 densityplot(res.midas, ~ idhi, col = c("grey", mdc(2)))
 ```
 
+
+::: {.alert .alert-block .alert-info}
 Apesar da melhoria notável na densidade comparado ao método pmm, esperaría-se que a densidade dos dados imputados fosse mais similar à dos dados originais.
+:::
 
 
 \
@@ -881,8 +889,11 @@ mice::stripplot(
   col = c("grey", mdc(2)), pch = c(1, 20)
 )
 ```
+
+
+
 ::: {.alert .alert-block .alert-info}
-**Análise:**
+**Conclusão:**
 
 O método `midastouch` teve resultados melhores que o `pmm`, mas é "custoso" em termos de processamento e o resultado não me parece suficiente. Seria necessário procurar outros métodos, talvez em outros pacotes como `simputation`.
 :::
@@ -898,7 +909,7 @@ Recursos adicionais:
 
 \
 
-# P09 Shiny XXX
+# P09 Shiny
 
 **Crie um dashboard Shiny onde seja possível selecionar (tire um print-screen da tela final do sistema):**\
 
@@ -908,9 +919,7 @@ c.  selecionar o limite inferior e superior do eixo X do gráfico;\
 d.  selecionar o limite inferior e superior do eixo Y do gráfico.\
 
 
-```{r}
-
-```
+![](.imgs/shiny.png)
 
 \
 
